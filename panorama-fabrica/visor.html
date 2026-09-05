@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>La fábrica textil — visor 360°</title>
+<style>
+  :root{
+    --soot:#15110d;
+    --soot-deep:#0a0806;
+    --brick:#6b3f2a;
+    --brass:#b08d4f;
+    --brass-bright:#d6ac6b;
+    --steam:#c9c2b6;
+    --lamp:#e0954a;
+    --ink:#eee7da;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--soot-deep);
+    font-family:'Iowan Old Style','Georgia',serif;
+    color:var(--ink);
+    overflow:hidden;
+    -webkit-user-select:none; user-select:none;
+  }
+  #canvas-wrap{position:fixed; inset:0;}
+  canvas{display:block; touch-action:none; cursor:grab;}
+  canvas.dragging{cursor:grabbing;}
+
+  /* --- Pantalla de entrada --- */
+  #gate{
+    position:fixed; inset:0; z-index:20;
+    display:flex; align-items:center; justify-content:center;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(224,149,74,0.10), transparent 60%),
+      linear-gradient(180deg, var(--soot) 0%, var(--soot-deep) 100%);
+    transition:opacity .9s ease, visibility .9s ease;
+  }
+  #gate.hidden{opacity:0; visibility:hidden; pointer-events:none;}
+  .ledger{
+    width:min(480px, 88vw);
+    padding:2.6rem 2.2rem 2.2rem;
+    border:1px solid rgba(176,141,79,0.35);
+    background:linear-gradient(180deg, rgba(30,24,18,0.55), rgba(20,16,12,0.7));
+    box-shadow:0 30px 80px rgba(0,0,0,0.55), inset 0 0 40px rgba(0,0,0,0.35);
+    text-align:center;
+    position:relative;
+  }
+  .ledger::before,.ledger::after{
+    content:""; position:absolute; width:22px; height:22px;
+    border:1px solid rgba(176,141,79,0.5);
+  }
+  .ledger::before{top:-1px; left:-1px; border-right:none; border-bottom:none;}
+  .ledger::after{bottom:-1px; right:-1px; border-left:none; border-top:none;}
+  .eyebrow{
+    font-family:'Courier New', monospace;
+    font-size:0.7rem; letter-spacing:0.15em;
+    color:var(--brass);
+    margin:0 0 0.9rem;
+  }
+  .ledger h1{
+    font-size:1.9rem; font-weight:400; line-height:1.25;
+    margin:0 0 0.9rem;
+    color:var(--ink);
+  }
+  .ledger p{
+    font-size:0.98rem; line-height:1.55;
+    color:var(--steam);
+    margin:0 0 1.6rem;
+  }
+  #enter-btn{
+    font-family:inherit; font-size:1rem;
+    padding:0.85rem 2.2rem;
+    background:var(--lamp);
+    color:var(--soot-deep);
+    border:none;
+    cursor:pointer;
+    letter-spacing:0.02em;
+    box-shadow:0 8px 22px rgba(224,149,74,0.25);
+    transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
+  }
+  #enter-btn:hover{background:var(--brass-bright); transform:translateY(-1px); box-shadow:0 10px 26px rgba(224,149,74,0.35);}
+  #enter-btn:active{transform:translateY(0);}
+  #enter-btn:disabled{background:#555; color:#999; cursor:wait; box-shadow:none;}
+  .hint{
+    margin-top:1.1rem; font-size:0.78rem; color:rgba(201,194,182,0.55);
+    font-style:italic;
+  }
+
+  /* --- HUD durante la visita --- */
+  #hud{
+    position:fixed; z-index:10;
+    left:0; right:0; bottom:0;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0.9rem 1.2rem calc(0.9rem + env(safe-area-inset-bottom));
+    background:linear-gradient(0deg, rgba(10,8,6,0.75), transparent);
+    opacity:0; transition:opacity .6s ease .3s;
+    pointer-events:none;
+  }
+  #hud.visible{opacity:1; pointer-events:auto;}
+  .tag{
+    font-family:'Courier New', monospace;
+    font-size:0.68rem; letter-spacing:0.08em;
+    color:rgba(238,231,218,0.55);
+  }
+  #mute-btn{
+    font-family:inherit; font-size:0.85rem;
+    background:rgba(21,17,13,0.6);
+    border:1px solid rgba(176,141,79,0.4);
+    color:var(--steam);
+    padding:0.5rem 1rem;
+    cursor:pointer;
+  }
+  #mute-btn:hover{border-color:var(--brass-bright); color:var(--ink);}
+
+  #loading{
+    position:absolute; bottom:-2.2rem; left:50%; transform:translateX(-50%);
+    font-family:'Courier New', monospace; font-size:0.72rem;
+    color:rgba(224,149,74,0.8); letter-spacing:0.08em;
+    white-space:nowrap;
+  }
+
+  /* --- Tarjeta de dato (hotspots) --- */
+  #info-card{
+    position:fixed; z-index:15;
+    left:50%; bottom:0;
+    width:min(430px, 90vw);
+    margin-bottom:1.7rem;
+    padding:1.7rem 1.8rem 1.6rem;
+    border:1px solid rgba(176,141,79,0.4);
+    background:linear-gradient(180deg, rgba(28,22,17,0.94), rgba(16,12,9,0.97));
+    box-shadow:0 24px 70px rgba(0,0,0,0.6), inset 0 0 30px rgba(0,0,0,0.3);
+    opacity:0; visibility:hidden; pointer-events:none;
+    transform:translate(-50%, 8px);
+    transition:opacity .35s ease, transform .35s ease, visibility .35s ease;
+  }
+  #info-card.visible{
+    opacity:1; visibility:visible; pointer-events:auto;
+    transform:translate(-50%, 0);
+  }
+  #info-card .eyebrow{margin-bottom:0.6rem;}
+  #info-card h2{
+    font-size:1.2rem; font-weight:400; line-height:1.3;
+    margin:0 0 0.7rem; color:var(--ink); padding-right:1.4rem;
+  }
+  #info-card p{
+    font-size:0.9rem; line-height:1.55; color:var(--steam); margin:0;
+  }
+  #info-card-close{
+    position:absolute; top:0.7rem; right:0.9rem;
+    background:none; border:none; cursor:pointer;
+    color:rgba(238,231,218,0.5); font-size:1.4rem; line-height:1;
+    font-family:inherit; padding:0.2rem 0.5rem;
+  }
+  #info-card-close:hover{color:var(--ink);}
+</style>
+</head>
+<body>
+
+<div id="canvas-wrap"></div>
+
+<div id="gate">
+  <div class="ledger">
+    <p class="eyebrow">HISTORIA 3° — REGISTRO DE VISITA</p>
+    <h1>La sala de hilado</h1>
+    <p>Estás por entrar a un taller textil de la revolución industrial. Girá la vista para recorrerlo: el sonido cambia según hacia dónde mirás. Usá auriculares si podés.</p>
+    <button id="enter-btn">Entrar a la fábrica</button>
+    <div id="loading"></div>
+    <p class="hint">Arrastrá con el mouse o el dedo para mirar alrededor</p>
+  </div>
+</div>
+
+<div id="hud">
+  <span class="tag">SALA DE HILADO · 360°</span>
+  <button id="mute-btn">Silenciar</button>
+</div>
+
+<div id="info-card">
+  <button id="info-card-close" aria-label="Cerrar">&times;</button>
+  <p class="eyebrow">DATO</p>
+  <h2 id="info-card-title"></h2>
+  <p id="info-card-text"></p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+
+  // ---------- Configuración ----------
+  var IMAGE_URL = 'panorama.jpg';
+  var AUDIO = {
+    ambiente:  'audio/ambiente.mp3',   // loop de base, sin posición
+    centro:    'audio/centro.mp3',     // zona frontal (lon 180)
+    izquierda: 'audio/izquierda.mp3',  // zona izquierda (lon 90)
+    derecha:   'audio/derecha.mp3',    // zona derecha (lon 270)
+    capataz:   'audio/capataz.mp3'     // voz, dispara cada tanto (lon 130)
+  };
+
+  // ---------- Three.js: escena base ----------
+  var container = document.getElementById('canvas-wrap');
+  var camera = new THREE.PerspectiveCamera(78, window.innerWidth / window.innerHeight, 1, 1200);
+  var scene = new THREE.Scene();
+  var renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  container.appendChild(renderer.domElement);
+  var canvasEl = renderer.domElement;
+
+  var loadingEl = document.getElementById('loading');
+  var enterBtn = document.getElementById('enter-btn');
+
+  var textureLoader = new THREE.TextureLoader();
+  textureLoader.load(
+    IMAGE_URL,
+    function(texture){
+      var geometry = new THREE.SphereGeometry(500, 60, 40);
+      geometry.scale(-1, 1, 1); // vista desde adentro
+      var material = new THREE.MeshBasicMaterial({ map: texture });
+      var mesh = new THREE.Mesh(geometry, material);
+      scene.add(mesh);
+      enterBtn.disabled = false;
+      enterBtn.textContent = 'Entrar a la fábrica';
+    },
+    function(xhr){
+      if (xhr.lengthComputable){
+        var pct = Math.round((xhr.loaded / xhr.total) * 100);
+        loadingEl.textContent = 'Cargando escena… ' + pct + '%';
+      }
+    },
+    function(err){
+      loadingEl.textContent = 'No se pudo cargar la imagen panorámica.';
+      console.error('Error cargando panorama:', err);
+    }
+  );
+  enterBtn.disabled = true;
+  enterBtn.textContent = 'Cargando…';
+
+  // ---------- Audio posicional ----------
+  var listener = new THREE.AudioListener();
+  camera.add(listener);
+
+  var audioLoader = new THREE.AudioLoader();
+  var started = false;
+  var pendingLoopSounds = []; // se reproducen apenas started = true
+
+  function makePositional(lon, url, opts){
+    opts = opts || {};
+    var sound = new THREE.PositionalAudio(listener);
+    sound.setRefDistance(60);
+    sound.setRolloffFactor(1.4);
+    sound.setDistanceModel('inverse');
+    sound.setLoop(opts.loop !== false);
+    sound.setVolume(opts.volume || 0.7);
+
+    var phi = THREE.MathUtils.degToRad(90); // altura: a la altura de los ojos
+    var theta = THREE.MathUtils.degToRad(lon);
+    var radius = 90;
+    var pos = new THREE.Vector3(
+      radius * Math.sin(phi) * Math.cos(theta),
+      0,
+      radius * Math.sin(phi) * Math.sin(theta)
+    );
+    sound.position.copy(pos);
+    scene.add(sound);
+
+    audioLoader.load(url, function(buffer){
+      sound.setBuffer(buffer);
+      if (opts.loop === false){
+        scheduleIntermittent(sound, opts.minGap || 18, opts.maxGap || 32);
+      } else if (started){
+        sound.play();
+      } else {
+        pendingLoopSounds.push(sound);
+      }
+    }, undefined, function(err){
+      console.warn('No se encontró el audio "' + url + '" todavía.', err);
+    });
+
+    return sound;
+  }
+
+  function scheduleIntermittent(sound, minGap, maxGap){
+    function playOnce(){
+      if (started && !sound.isPlaying) sound.play();
+      var wait = (minGap + Math.random() * (maxGap - minGap)) * 1000;
+      setTimeout(playOnce, wait + (sound.buffer ? sound.buffer.duration * 1000 : 0));
+    }
+    // primer disparo con un pequeño retraso tras entrar
+    setTimeout(playOnce, 4000 + Math.random() * 4000);
+  }
+
+  var soundCentro    = makePositional(180, AUDIO.centro,    { loop:true,  volume:0.7 });
+  var soundIzquierda = makePositional(90,  AUDIO.izquierda, { loop:true,  volume:0.55 });
+  var soundDerecha   = makePositional(270, AUDIO.derecha,   { loop:true,  volume:0.55 });
+  var soundCapataz   = makePositional(130, AUDIO.capataz,   { loop:false, volume:0.9, minGap:16, maxGap:30 });
+
+  // ambiente: no posicional, siempre parejo
+  var soundAmbiente = new THREE.Audio(listener);
+  soundAmbiente.setLoop(true);
+  soundAmbiente.setVolume(0.35);
+  audioLoader.load(AUDIO.ambiente, function(buffer){
+    soundAmbiente.setBuffer(buffer);
+    if (started) soundAmbiente.play();
+    else pendingLoopSounds.push(soundAmbiente);
+  }, undefined, function(err){
+    console.warn('No se encontró audio/ambiente.mp3 todavía.', err);
+  });
+
+  // ---------- Arranque (gesto de usuario) ----------
+  var gate = document.getElementById('gate');
+  var hud = document.getElementById('hud');
+
+  enterBtn.addEventListener('click', function(){
+    if (enterBtn.disabled) return;
+    started = true;
+    if (listener.context.state === 'suspended') listener.context.resume();
+    pendingLoopSounds.forEach(function(s){ if (!s.isPlaying) s.play(); });
+    pendingLoopSounds = [];
+    gate.classList.add('hidden');
+    hud.classList.add('visible');
+  });
+
+  var muteBtn = document.getElementById('mute-btn');
+  var muted = false;
+  muteBtn.addEventListener('click', function(){
+    muted = !muted;
+    listener.setMasterVolume(muted ? 0 : (cardOpen ? 0.35 : 1));
+    muteBtn.textContent = muted ? 'Activar sonido' : 'Silenciar';
+  });
+
+  // ---------- Hotspots (puntos clickeables con datos) ----------
+  // audio: null por ahora — cuando haya narración, se agrega la ruta acá
+  // y se suma un botón "reproducir" en la tarjeta sin tocar el resto.
+  var HOTSPOTS = [
+    {
+      lon: 100, lat: -18,
+      title: 'Manos pequeñas, jornadas largas',
+      text: 'Niños de 5 a 10 años eran una parte significativa de la mano de obra fabril. Se los empleaba porque sus manos chicas podían meterse entre los engranajes en movimiento para atar hilos rotos sin detener la máquina — causa de buena parte de los accidentes. Recién en 1833 el Factory Act empezó a limitar su jornada.',
+      audio: null
+    },
+    {
+      lon: 175, lat: 12,
+      title: 'El algodón que impulsó (¿o no?) una revolución',
+      text: 'El algodón crudo llegaba de plantaciones esclavistas del sur de EE.UU.: la industria textil británica dependía de ese vínculo colonial. Históricamente se sostuvo que el algodón fue el "sector líder" de la Revolución Industrial; hoy varios historiadores discuten si su peso se sobreestimó frente al carbón o el hierro. Lo indiscutido: esa pelusa causaba bisinosis, el "pulmón del hilador".',
+      audio: null
+    },
+    {
+      lon: 230, lat: -12,
+      title: 'La máquina que multiplicó las manos',
+      text: 'Estas son hiladoras mecánicas, evolución de la spinning jenny (Hargreaves, 1764) y la water frame de Arkwright (1769). Antes, hilar era tarea de una persona con una rueca; estas máquinas hacían girar decenas de husos a la vez. Primero se movían con energía hidráulica, luego con vapor.',
+      audio: null
+    }
+  ];
+
+  function makeMarkerTexture(){
+    var size = 128;
+    var canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    var ctx = canvas.getContext('2d');
+    var g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    g.addColorStop(0, 'rgba(224,149,74,0.95)');
+    g.addColorStop(0.35, 'rgba(224,149,74,0.5)');
+    g.addColorStop(1, 'rgba(224,149,74,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    ctx.beginPath();
+    ctx.arc(size/2, size/2, size*0.13, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,244,227,0.95)';
+    ctx.fill();
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  var markerTexture = makeMarkerTexture();
+  var hotspotMeshes = [];
+
+  HOTSPOTS.forEach(function(hs){
+    var material = new THREE.SpriteMaterial({ map: markerTexture, transparent: true, depthWrite: false });
+    var sprite = new THREE.Sprite(material);
+    var phi = THREE.MathUtils.degToRad(90 - hs.lat);
+    var theta = THREE.MathUtils.degToRad(hs.lon);
+    var radius = 480;
+    sprite.position.set(
+      radius * Math.sin(phi) * Math.cos(theta),
+      radius * Math.cos(phi),
+      radius * Math.sin(phi) * Math.sin(theta)
+    );
+    sprite.scale.set(26, 26, 1);
+    sprite.userData.hotspot = hs;
+    scene.add(sprite);
+    hotspotMeshes.push(sprite);
+  });
+
+  var raycaster = new THREE.Raycaster();
+  var mouseNDC = new THREE.Vector2();
+  var infoCard = document.getElementById('info-card');
+  var infoCardTitle = document.getElementById('info-card-title');
+  var infoCardText = document.getElementById('info-card-text');
+  var infoCardClose = document.getElementById('info-card-close');
+  var cardOpen = false;
+
+  function openCard(hs){
+    infoCardTitle.textContent = hs.title;
+    infoCardText.textContent = hs.text;
+    infoCard.classList.add('visible');
+    cardOpen = true;
+    if (!muted) listener.setMasterVolume(0.35);
+  }
+  function closeCard(){
+    infoCard.classList.remove('visible');
+    cardOpen = false;
+    if (!muted) listener.setMasterVolume(1);
+  }
+  infoCardClose.addEventListener('click', closeCard);
+
+  function handleTap(x, y){
+    mouseNDC.x = (x / window.innerWidth) * 2 - 1;
+    mouseNDC.y = -(y / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouseNDC, camera);
+    var hits = raycaster.intersectObjects(hotspotMeshes);
+    if (hits.length > 0){
+      openCard(hits[0].object.userData.hotspot);
+    }
+  }
+
+  // ---------- Control de vista (arrastrar para mirar) ----------
+  var lon = 180, lat = 0;
+  var isPointerDown = false, hasDragged = false;
+  var onPointerDownLon = 0, onPointerDownLat = 0, onPointerDownX = 0, onPointerDownY = 0;
+  var idleTimer = null, autoRotate = false;
+  var DRAG_THRESHOLD = 6;
+
+  function markInteraction(){
+    autoRotate = false;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function(){ autoRotate = true; }, 5000);
+  }
+  markInteraction();
+
+  function onPointerDown(x, y){
+    isPointerDown = true;
+    hasDragged = false;
+    canvasEl.classList.add('dragging');
+    onPointerDownX = x; onPointerDownY = y;
+    onPointerDownLon = lon; onPointerDownLat = lat;
+    markInteraction();
+  }
+  function onPointerMove(x, y){
+    if (!isPointerDown) return;
+    if (Math.abs(x - onPointerDownX) > DRAG_THRESHOLD || Math.abs(y - onPointerDownY) > DRAG_THRESHOLD){
+      hasDragged = true;
+    }
+    lon = (onPointerDownX - x) * 0.12 + onPointerDownLon;
+    lat = (y - onPointerDownY) * 0.12 + onPointerDownLat;
+    markInteraction();
+  }
+  function onPointerUp(x, y){
+    isPointerDown = false;
+    canvasEl.classList.remove('dragging');
+    if (!hasDragged && started){
+      handleTap(x, y);
+    }
+  }
+
+  canvasEl.addEventListener('mousedown', function(e){ onPointerDown(e.clientX, e.clientY); });
+  window.addEventListener('mousemove', function(e){ onPointerMove(e.clientX, e.clientY); });
+  window.addEventListener('mouseup', function(e){ onPointerUp(e.clientX, e.clientY); });
+
+  canvasEl.addEventListener('touchstart', function(e){
+    if (e.touches.length === 1) onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive:true });
+  canvasEl.addEventListener('touchmove', function(e){
+    if (e.touches.length === 1) onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive:true });
+  window.addEventListener('touchend', function(e){
+    var t = e.changedTouches && e.changedTouches[0];
+    onPointerUp(t ? t.clientX : onPointerDownX, t ? t.clientY : onPointerDownY);
+  });
+
+  window.addEventListener('resize', function(){
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // ---------- Loop de render ----------
+  function animate(){
+    requestAnimationFrame(animate);
+
+    var t = Date.now() * 0.0022;
+    hotspotMeshes.forEach(function(m, i){
+      var s = 24 + Math.sin(t + i * 2.1) * 4;
+      m.scale.set(s, s, 1);
+    });
+
+    if (autoRotate && !isPointerDown) lon += 0.012;
+
+    lat = Math.max(-85, Math.min(85, lat));
+    var phi = THREE.MathUtils.degToRad(90 - lat);
+    var theta = THREE.MathUtils.degToRad(lon);
+
+    var target = new THREE.Vector3(
+      500 * Math.sin(phi) * Math.cos(theta),
+      500 * Math.cos(phi),
+      500 * Math.sin(phi) * Math.sin(theta)
+    );
+    camera.lookAt(target);
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+})();
+</script>
+</body>
+</html>
