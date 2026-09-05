@@ -22,6 +22,7 @@ Cada recurso está diseñado con criterio pedagógico: no es "gamificar por gami
 | [Arqueología del Trabajo](trabajo/) | Trabajo y Ciudadanía | 6to año | Gamificación con adaptaciones |
 | [El Caso del Origen de las Especies](pensamiento-cientifico/) | Pensamiento Científico | Secundaria | Gamificación |
 | [Desafío Babel: El Torneo de la Mente](pensamiento-cientifico/logica/) | Pensamiento Científico | 6to año | Torneo de lógica en equipos |
+| [La Sala de Hilado — Revolución Industrial](panorama-fabrica/visor.html) | Historia | 3er año | Panorama 360° con audio posicional y hotspots |
 | [El Camino de la Libertad · Revolución Francesa](historia/) | Historia | 3er año | Juego de facciones por equipos |
 | [Historia y Rock — Argentina 1966/2004](https://matiasaragone.github.io/Historia-y-rock) | Historia | 6to año | Proyecto de Aula |
 | [Conversión de Rugby](https://matiasaragone.github.io/juego-cuadratica/juego_mobile.html) | Matemática | 2do año | Gamificación |
@@ -50,6 +51,10 @@ recursos-para-el-aula/
 ├── pensamiento-cientifico/
 │   ├── index.html
 │   └── logica/index.html
+├── panorama-fabrica/
+│   ├── visor.html
+│   ├── panorama.jpg
+│   └── audio/
 └── accesibilidad/
     ├── index.html
     └── historia-2do/cisma/index.html
